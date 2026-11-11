@@ -11,8 +11,8 @@ name: library-seed-prng
 hosts:
   - name: seed
     base_box:
-      image: seed          # À ADAPTER : nom exact de l'image SEED dans votre instance CyberRangeCZ
-      mgmt_user: seed      # À ADAPTER : utilisateur de l'image avec sudo sans mot de passe (clé SSH via cloud-init)
+      image: seed          # image SEED Ubuntu 20.04 de l'instance CyberRangeCZ
+      mgmt_user: ubuntu    # compte technique de la plateforme (Ansible), pas celui des étudiants (seed / dees)
     flavor: m1.medium
 
 routers:

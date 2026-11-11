@@ -28,16 +28,25 @@ Ce dépôt reprend la structure technique du modèle [library-junior-hacker](htt
 
 Le TP n'utilise qu'une machine. Le routeur reste obligatoire : il est le seul accès à Internet de la sandbox (installation des paquets par `apt`) et la passerelle du réseau accessible par l'utilisateur.
 
-**Prérequis de l'image `seed`** : Ubuntu avec `python3` et cloud-init, et un utilisateur de gestion (`mgmt_user`) disposant de `sudo` sans mot de passe, accessible par la clé SSH injectée par OpenStack. Une image Ubuntu standard (ex. `ubuntu-focal-x86_64`) convient aussi, car tout ce dont le TP a besoin est installé par Ansible. Avec un noyau 5.4 (Ubuntu 20.04), `/dev/random` bloque comme dans l'énoncé original.
+**Comptes de la VM `seed`** :
+
+| Compte | Rôle | Accès |
+|-|-|-|
+| `ubuntu` | `mgmt_user` : compte technique de la plateforme (Ansible) | clé SSH, sudo sans mot de passe |
+| `seed` / `dees` | compte des étudiants (console *Open GUI* et SSH) | **sans droits d'administration** : le provisioning retire sudo, docker, lxd, adm… |
+
+Le TP n'a besoin de root nulle part. Avec un mot de passe connu de tous, les droits d'administration de `seed` permettraient de lire le validateur et donc les flags. Pour les conserver malgré tout, mettez `prng_remove_admin_rights: false` (dans `roles/prng-lab/defaults/main.yml`).
+
+Avec un noyau 5.4 (Ubuntu 20.04, image SEED), `/dev/random` bloque comme dans l'énoncé original.
 
 ## Fonctionnement anti-triche
 
 | Tâche | Ce qui est propre à chaque sandbox | Pourquoi on ne peut pas tricher |
 |-|-|-|
 | 1, 2 | Dates de génération des clés, IV, fichiers chiffrés, flags | Le flag n'existe que chiffré. Les paramètres sont dérivés (SHA-256) du flag et d'un sel secret tiré sur la VM (`/root/.prng-lab-salt`, illisible pour l'étudiant). Il faut faire l'attaque sur **sa** sandbox. |
-| 3, 4, 5 | Flags compilés dans `/usr/local/bin/seedlab` | Binaire `root:root` en mode `0711` : exécutable mais illisible pour `student` (sans sudo). Le validateur vérifie l'expérience **en direct** : entropie mesurée pendant la réponse, processus lisant `/dev/random`, valeur `ent` du fichier de l'étudiant, exécution de son `genkey`. |
+| 3, 4, 5 | Flags compilés dans `/usr/local/bin/seedlab` | Binaire `root:root` en mode `0711` : exécutable mais illisible pour `seed` (privé de sudo). Le validateur vérifie l'expérience **en direct** : entropie mesurée pendant la réponse, processus lisant `/dev/random`, valeur `ent` du fichier de l'étudiant, exécution de son `genkey`. |
 
-En plus : le compte `seed`/`dees` des VM SEED reçoit un mot de passe aléatoire et la connexion graphique automatique est désactivée. Les commandes tapées sont journalisées (rôle `sandbox-logging`), et la plateforme enregistre toutes les réponses soumises, y compris les fausses.
+En plus : le compte `seed`/`dees` perd ses droits d'administration (groupes sudo, docker, lxd, adm…, règles sudoers), et les sessions déjà ouvertes sont fermées. Le provisioning vérifie ensuite que `sudo -l -U seed` ne donne plus aucun droit. Les commandes tapées sont journalisées (rôle `sandbox-logging`), et la plateforme enregistre toutes les réponses soumises, y compris les fausses.
 
 ## Structure
 
@@ -60,7 +69,7 @@ provisioning/
 
 ## Déploiement (résumé)
 
-1. Adapter `image` et `mgmt_user` de l'hôte `seed` dans `topology.yml` à votre instance.
+1. Vérifier `image: seed` et `mgmt_user: ubuntu` dans `topology.yml` (valeurs de l'instance de l'école).
 2. Pousser ce dépôt sur GitHub, en dépôt public ou accessible par la plateforme.
 3. **Sandbox Agenda > Sandbox Definition** : créer la définition (URL Git, révision `main`).
 4. **Sandbox Agenda > Pool** : créer un pool (taille = nombre d'étudiants), puis allouer les sandboxes.

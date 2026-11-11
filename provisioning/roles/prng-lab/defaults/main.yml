@@ -1,6 +1,6 @@
 ---
-# Compte de l'étudiant (créé par le rôle user-access dans playbook.yml)
-prng_lab_user: student
+# Compte des étudiants (identifiants seed / dees fixés dans playbook.yml via user-access)
+prng_lab_user: seed
 prng_lab_dir: "/home/{{ prng_lab_user }}/lab"
 
 # Validateur des tâches 3 à 5
@@ -13,5 +13,17 @@ prng_flag_task3: LocalTask3Flg
 prng_flag_task4: LocalTask4Flg
 prng_flag_task5: LocalTask5Flg
 
-# Utilisateur par défaut des VM SEED (mot de passe public « dees ») : neutralisé
-prng_seed_default_user: seed
+# Retirer au compte étudiant ses droits d'administration (le TP n'en a pas besoin).
+# Sur les VM SEED, seed est administrateur et son mot de passe (dees) est public :
+# laisser ces droits permettrait de lire le validateur et donc les flags 3 à 5.
+prng_remove_admin_rights: true
+prng_privileged_groups:
+  - sudo
+  - admin
+  - wheel
+  - adm
+  - docker
+  - lxd
+  - disk
+  - libvirt
+  - systemd-journal

@@ -3,8 +3,10 @@
 Génère les défis personnalisés (un jeu par sandbox) du SEED Lab
 « Pseudo Random Number Generation ».
 
-Les flags arrivent par variables d'environnement (PRNG_FLAG1 ... PRNG_FLAG5), fournies
-par Ansible à partir des variables APG de la plateforme (variables.yml). Tous les
+Les flags (variables APG de la plateforme, variables.yml) arrivent dans un fichier JSON
+root 0600 (--flags-file) écrit par Ansible puis supprimé ; jamais sur une ligne de
+commande, que sudo journaliserait. Pour les tests locaux : variables d'environnement
+PRNG_FLAG1 ... PRNG_FLAG5. Tous les
 paramètres propres à la sandbox (horodatages, IV) sont DÉRIVÉS par SHA-256 du flag ET
 d'un sel secret tiré au hasard sur la VM (fichier root 0600, --salt-file) :
   - ils changent d'un étudiant à l'autre ;
@@ -20,8 +22,8 @@ Tâche 2 : task2/alice_tax_return.pdf.enc + task2/bob_notes.txt
 Tâches 3-5 : binaire validateur « seedlab » compilé avec les flags 3, 4 et 5.
 
 Usage (provisioning) :
-  build_challenges.py --lab-dir /home/student/lab --owner student \
-      --salt-file /root/.prng-lab-salt \
+  build_challenges.py --lab-dir /home/seed/lab --owner seed \
+      --flags-file flags.json --salt-file /root/.prng-lab-salt \
       --checker-src seedlab.c --checker-out /usr/local/bin/seedlab
 Usage (test local, sans gcc ni glibc) :
   build_challenges.py --lab-dir ./out --salt-file ./salt --no-compile
@@ -32,6 +34,7 @@ import ctypes
 import ctypes.util
 import datetime
 import hashlib
+import json
 import os
 import platform
 import shutil
@@ -296,7 +299,8 @@ def build_checker(flags, src, out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lab-dir", required=True)
-    parser.add_argument("--owner", help="propriétaire des fichiers du TP (ex. student)")
+    parser.add_argument("--owner", help="propriétaire des fichiers du TP (ex. seed)")
+    parser.add_argument("--flags-file", help='JSON {"1": flag1, ..., "5": flag5} (sinon PRNG_FLAG1..5)')
     parser.add_argument("--salt-file", help="sel secret de la sandbox (créé s'il n'existe pas)")
     parser.add_argument("--checker-src")
     parser.add_argument("--checker-out")
@@ -304,11 +308,15 @@ def main():
     parser.add_argument("--print-params", action="store_true", help="affiche les paramètres (test local uniquement)")
     args = parser.parse_args()
 
+    source = {}
+    if args.flags_file:
+        with open(args.flags_file, encoding="utf-8") as f:
+            source = json.load(f)
     flags = {}
     for n in range(1, 6):
-        value = os.environ.get(f"PRNG_FLAG{n}", "")
+        value = str(source.get(str(n), "")) if args.flags_file else os.environ.get(f"PRNG_FLAG{n}", "")
         if not value or len(value) > 50:
-            sys.exit(f"ERROR: PRNG_FLAG{n} is missing or longer than 50 characters")
+            sys.exit(f"ERROR: flag {n} is missing or longer than 50 characters")
         flags[n] = value
 
     salt = load_salt(args.salt_file)

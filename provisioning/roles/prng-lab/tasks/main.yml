@@ -30,53 +30,63 @@
     - task5/genkey.c
 
 # ------------------------------------------------------------------ défis personnalisés
-- name: Create private build directory
-  ansible.builtin.file:
-    path: /root/.prng-build
-    state: directory
-    owner: root
-    group: root
-    mode: "0700"
+# Les flags passent par un fichier root 0600, jamais par la ligne de commande ni par
+# l'environnement (sudo journalise la commande complète dans auth.log). Le répertoire
+# de construction est supprimé même en cas d'échec.
+- name: Build per-sandbox challenges
+  block:
+    - name: Create private build directory
+      ansible.builtin.file:
+        path: /root/.prng-build
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
 
-- name: Copy challenge generator and checker source
-  ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: "/root/.prng-build/{{ item }}"
-    owner: root
-    group: root
-    mode: "0600"
-  loop:
-    - build_challenges.py
-    - seedlab.c
+    - name: Copy challenge generator and checker source
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/root/.prng-build/{{ item }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - build_challenges.py
+        - seedlab.c
 
-- name: Generate per-sandbox challenges and compile the checker
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/python3
-      - /root/.prng-build/build_challenges.py
-      - --lab-dir
-      - "{{ prng_lab_dir }}"
-      - --owner
-      - "{{ prng_lab_user }}"
-      - --salt-file
-      - /root/.prng-lab-salt
-      - --checker-src
-      - /root/.prng-build/seedlab.c
-      - --checker-out
-      - "{{ prng_checker_path }}"
-  environment:
-    PRNG_FLAG1: "{{ prng_flag_task1 }}"
-    PRNG_FLAG2: "{{ prng_flag_task2 }}"
-    PRNG_FLAG3: "{{ prng_flag_task3 }}"
-    PRNG_FLAG4: "{{ prng_flag_task4 }}"
-    PRNG_FLAG5: "{{ prng_flag_task5 }}"
-  changed_when: true
-  no_log: true            # les flags ne doivent apparaître ni dans les logs Ansible ni dans le journal de la VM
+    - name: Write flags for the generator (root only)
+      ansible.builtin.copy:
+        dest: /root/.prng-build/flags.json
+        content: "{{ {'1': prng_flag_task1, '2': prng_flag_task2, '3': prng_flag_task3, '4': prng_flag_task4, '5': prng_flag_task5} | to_json }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
 
-- name: Remove build directory
-  ansible.builtin.file:
-    path: /root/.prng-build
-    state: absent
+    - name: Generate per-sandbox challenges and compile the checker
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /root/.prng-build/build_challenges.py
+          - --lab-dir
+          - "{{ prng_lab_dir }}"
+          - --owner
+          - "{{ prng_lab_user }}"
+          - --flags-file
+          - /root/.prng-build/flags.json
+          - --salt-file
+          - /root/.prng-lab-salt
+          - --checker-src
+          - /root/.prng-build/seedlab.c
+          - --checker-out
+          - "{{ prng_checker_path }}"
+      changed_when: true
+
+  always:
+    - name: Remove build directory
+      ansible.builtin.file:
+        path: /root/.prng-build
+        state: absent
 
 # ------------------------------------------------------------------ vérifications
 - name: Run checker self-test
@@ -126,49 +136,71 @@
     label: "{{ item.item }}"
 
 # ------------------------------------------------------------------ anti-triche
-# Les VM SEED ont un compte « seed » (mot de passe public « dees », sudo). On le rend
-# inutilisable par les étudiants : mot de passe aléatoire inconnu, pas de connexion
-# graphique automatique. L'accès SSH par clé du compte de gestion reste intact.
-- name: Collect local accounts
-  ansible.builtin.getent:
-    database: passwd
+# Les étudiants utilisent le compte seed / dees. Sur les VM SEED, ce compte est
+# administrateur (sudo, docker...) : avec un mot de passe connu de tous, un étudiant
+# deviendrait root et pourrait lire le validateur. On lui retire ces droits ; le compte
+# de gestion de la plateforme (mgmt_user : ubuntu) n'est pas modifié.
+- name: Remove admin rights from the lab account
+  when: prng_remove_admin_rights | bool
+  block:
+    - name: Refuse to strip the management account
+      ansible.builtin.assert:
+        that:
+          - prng_lab_user != (ansible_user | default('root'))
+        fail_msg: "Le compte étudiant ({{ prng_lab_user }}) ne doit pas être le mgmt_user de topology.yml"
 
-- name: Replace the public password of the default SEED account
-  ansible.builtin.user:
-    name: "{{ prng_seed_default_user }}"
-    password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) | password_hash('sha512') }}"
-  when: prng_seed_default_user in ansible_facts.getent_passwd
-  no_log: true
+    - name: Collect local groups
+      ansible.builtin.getent:
+        database: group
+
+    - name: Remove the lab account from privileged groups
+      ansible.builtin.command:
+        argv: [gpasswd, -d, "{{ prng_lab_user }}", "{{ item }}"]
+      loop: "{{ prng_privileged_groups }}"
+      when:
+        - item in ansible_facts.getent_group
+        - prng_lab_user in (ansible_facts.getent_group[item][2] | default('', true)).split(',')
+      register: prng_group_cleanup
+      changed_when: true
+
+    - name: Find sudoers drop-in files
+      ansible.builtin.find:
+        paths: /etc/sudoers.d
+      register: prng_sudoers_files
+
+    - name: Remove sudo rules naming the lab account
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        regexp: '^\s*{{ prng_lab_user }}\s'
+        state: absent
+        validate: /usr/sbin/visudo -cf %s
+      loop: "{{ ['/etc/sudoers'] + (prng_sudoers_files.files | map(attribute='path') | list) }}"
+      register: prng_sudoers_cleanup
+
+    # Une session déjà ouverte (connexion graphique automatique) garderait ses anciens groupes
+    - name: Close sessions opened with the former rights
+      ansible.builtin.command: "pkill -KILL -u {{ prng_lab_user }}"
+      register: prng_pkill
+      changed_when: prng_pkill.rc == 0
+      failed_when: prng_pkill.rc > 1
+      when: prng_group_cleanup is changed or prng_sudoers_cleanup is changed
+      notify: Restart display manager
+
+    - name: List sudo rights of the lab account
+      ansible.builtin.command: "sudo -l -U {{ prng_lab_user }}"
+      environment:
+        LC_ALL: C
+        LANG: C
+        LANGUAGE: C
+      register: prng_sudo_rights
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the lab account has no sudo rights
+      ansible.builtin.assert:
+        that:
+          - "'is not allowed to run sudo' in (prng_sudo_rights.stdout + prng_sudo_rights.stderr)"
+        fail_msg: "{{ prng_lab_user }} a encore des droits sudo : {{ prng_sudo_rights.stdout }}"
 
 - name: Collect services
   ansible.builtin.service_facts:
-
-- name: Check for GDM configuration
-  ansible.builtin.stat:
-    path: /etc/gdm3/custom.conf
-  register: prng_gdm_conf
-
-- name: Disable GDM automatic login
-  ansible.builtin.lineinfile:
-    path: /etc/gdm3/custom.conf
-    regexp: '^\s*#?\s*AutomaticLoginEnable\s*='
-    line: AutomaticLoginEnable = false
-    insertafter: '^\[daemon\]'
-  when: prng_gdm_conf.stat.exists
-  notify: Restart display manager
-
-- name: Find LightDM configuration files
-  ansible.builtin.find:
-    paths: [/etc/lightdm, /etc/lightdm/lightdm.conf.d]
-    patterns: "*.conf"
-  register: prng_lightdm_conf
-
-- name: Disable LightDM automatic login
-  ansible.builtin.lineinfile:
-    path: "{{ item.path }}"
-    regexp: '^\s*autologin-user\s*='
-    state: absent
-  loop: "{{ prng_lightdm_conf.files }}"
-  loop_control:
-    label: "{{ item.path }}"
-  notify: Restart display manager

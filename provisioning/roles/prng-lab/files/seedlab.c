@@ -250,7 +250,7 @@ static int find_random_reader(pid_t *who, char *comm, size_t comm_size)
     struct dirent *e;
     uid_t me = getuid();
     pid_t self = getpid();
-    char path[PATH_MAX], link[PATH_MAX], target[PATH_MAX];
+    char path[PATH_MAX], link[600], target[PATH_MAX];
 
     if (!proc)
         return 0;
@@ -273,7 +273,7 @@ static int find_random_reader(pid_t *who, char *comm, size_t comm_size)
         while ((f = readdir(fds)) != NULL) {
             if (f->d_name[0] == '.')
                 continue;
-            snprintf(link, sizeof link, "%s/%s", path, f->d_name);
+            snprintf(link, sizeof link, "/proc/%s/fd/%s", e->d_name, f->d_name);
             ssize_t k = readlink(link, target, sizeof target - 1);
             if (k < 0)
                 continue;
@@ -471,7 +471,7 @@ static int file_contains(const char *path, const char *needle)
 
 static int task5(void)
 {
-    char bin[PATH_MAX], src[PATH_MAX], prog[PATH_MAX], buf[64], msg[512];
+    char bin[PATH_MAX], src[PATH_MAX], prog[PATH_MAX], buf[64], msg[PATH_MAX + 512];
     char out1[4096], out2[4096], key1[65], key2[65];
     long size;
     double h, given;
