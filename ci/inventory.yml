@@ -1,0 +1,15 @@
+# Inventaire de test : imite celui que CyberRangeCZ génère pour une sandbox.
+# La « VM seed » est un conteneur systemd piloté par la connexion docker d'Ansible.
+all:
+  vars:
+    global_sandbox_id: 4242
+    global_pool_id: 1
+    global_sandbox_allocation_unit_id: 42
+    global_sandbox_name: ci-sandbox
+  children:
+    hosts:
+      hosts:
+        seed:
+          ansible_connection: community.docker.docker
+          ansible_host: seed
+    routers: {}

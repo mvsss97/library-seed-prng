@@ -12,17 +12,19 @@
   roles:
     - hosts
 
-# Compte étudiant + défis personnalisés
+# Compte étudiant seed / dees (identifiants habituels des VM SEED) + défis personnalisés.
+# Le rôle prng-lab retire à seed ses droits d'administration (sudo, docker, lxd...) :
+# avec un mot de passe connu de tous, ils permettraient de lire les flags.
 - name: Configure seed
   hosts: seed
   become: true
   roles:
     - role: user-access
-      user_access_username: student
-      user_access_password: Password123
+      user_access_username: seed
+      user_access_password: dees
       user_access_sudo: false
     - role: prng-lab
-      prng_lab_user: student
+      prng_lab_user: seed
       prng_flag_task1: "{{ flag_task1 | default('LocalTask1Flg') }}"
       prng_flag_task2: "{{ flag_task2 | default('LocalTask2Flg') }}"
       prng_flag_task3: "{{ flag_task3 | default('LocalTask3Flg') }}"

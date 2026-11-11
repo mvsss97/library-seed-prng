@@ -1,0 +1,69 @@
+name: Verification
+
+on:
+  push:
+    branches: [verification]
+  workflow_dispatch:
+
+env:
+  ANSIBLE_STDOUT_CALLBACK: default
+  ANSIBLE_RETRY_FILES_ENABLED: "0"
+  ANSIBLE_FORCE_COLOR: "0"
+  PY_COLORS: "0"
+
+jobs:
+  static:
+    name: Compilation et syntaxe
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Outils
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libssl-dev > /dev/null
+          pip install -q "ansible==9.*"
+      - name: Contrôles statiques
+        run: bash ci/static.sh
+
+  sandbox:
+    name: Sandbox ${{ matrix.name }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 20.04 (SEED)
+            image: geerlingguy/docker-ubuntu2004-ansible:latest
+          - name: Ubuntu 22.04
+            image: geerlingguy/docker-ubuntu2204-ansible:latest
+          - name: Ubuntu 24.04
+            image: geerlingguy/docker-ubuntu2404-ansible:latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ansible 9 et générateur APG (comme le runner CyberRangeCZ)
+        run: pip install -q "ansible==9.*" crczp-automated-problem-generation-lib
+      - name: Flags de la sandbox (variables.yml)
+        run: python ci/generate_answers.py variables.yml 1 42 answers.json flags.txt
+      - name: Démarrage de la VM seed
+        run: bash ci/start_target.sh "${{ matrix.image }}"
+      - name: Provisioning (playbook.yml)
+        run: bash ci/provision.sh provision-1.log
+      - name: Vérifications après provisioning
+        run: bash ci/check_target.sh
+      - name: Résolution des 5 tâches par l'étudiant (seed)
+        run: |
+          docker cp ci/solve_as_student.sh seed:/tmp/solve.sh
+          docker cp training.json seed:/tmp/training.json
+          docker exec seed chmod 644 /tmp/solve.sh /tmp/training.json
+          docker exec -u seed seed bash /tmp/solve.sh
+      - name: Flags obtenus = réponses attendues par la plateforme
+        run: |
+          docker exec seed cat /home/seed/ci-results.txt > results.txt
+          python ci/compare.py answers.json results.txt
+      - name: Re-provisioning (idempotence)
+        run: bash ci/idempotency.sh
