@@ -1,0 +1,17 @@
+# Rôles Ansible téléchargés par ansible-galaxy (requirements.yml)
+provisioning/roles/user-access/
+provisioning/roles/sandbox-logging/
+provisioning/roles/sandbox-logging-*/
+
+# Fichiers générés lors de tests locaux
+*.retry
+__pycache__/
+*.pyc
+out/
+lab-test/
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

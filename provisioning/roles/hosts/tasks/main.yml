@@ -1,0 +1,36 @@
+---
+# Outils nécessaires au TP PRNG, et rien de plus :
+#   build-essential : gcc / make pour compiler les programmes C du TP
+#   libssl-dev      : en-têtes OpenSSL (EVP) pour le programme de force brute (tâche 2)
+#   openssl         : chiffrement / déchiffrement aes-128-cbc en ligne de commande
+#   ent             : tests statistiques d'aléa (tâche 5)
+#   procps          : commande watch (tâches 3 et 4)
+#   hexdump         : paquet bsdmainutils (Ubuntu 20.04) ou bsdextrautils (Ubuntu >= 22.04)
+#   nano, vim       : édition du code source
+
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+
+- name: Install PRNG lab tools
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - libssl-dev
+      - openssl
+      - ent
+      - procps
+      - nano
+      - vim
+      - python3
+      - "{{ hexdump_package }}"
+    state: present
+    lock_timeout: 600
+  vars:
+    hexdump_package: >-
+      {{ 'bsdextrautils'
+         if (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int >= 22)
+         or (ansible_distribution == 'Debian' and ansible_distribution_major_version | int >= 11)
+         else 'bsdmainutils' }}

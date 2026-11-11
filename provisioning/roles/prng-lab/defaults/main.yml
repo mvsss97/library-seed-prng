@@ -1,0 +1,17 @@
+---
+# Compte de l'étudiant (créé par le rôle user-access dans playbook.yml)
+prng_lab_user: student
+prng_lab_dir: "/home/{{ prng_lab_user }}/lab"
+
+# Validateur des tâches 3 à 5
+prng_checker_path: /usr/local/bin/seedlab
+
+# Flags : fournis par la plateforme (variables.yml) via playbook.yml
+prng_flag_task1: LocalTask1Flg
+prng_flag_task2: LocalTask2Flg
+prng_flag_task3: LocalTask3Flg
+prng_flag_task4: LocalTask4Flg
+prng_flag_task5: LocalTask5Flg
+
+# Utilisateur par défaut des VM SEED (mot de passe public « dees ») : neutralisé
+prng_seed_default_user: seed

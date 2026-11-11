@@ -1,0 +1,48 @@
+---
+# Provisioning du SEED Lab « Pseudo Random Number Generation » pour CyberRangeCZ.
+#
+# Les variables flag_task1 ... flag_task5 sont générées par la plateforme à partir de
+# ../variables.yml (une valeur par sandbox) et passées en « extra vars ».
+# Les valeurs par défaut ci-dessous ne servent qu'aux tests hors plateforme.
+
+# Outils communs à tous les hôtes (compilateur, OpenSSL, ent, hexdump...)
+- name: Configuring hosts
+  hosts: hosts
+  become: true
+  roles:
+    - hosts
+
+# Compte étudiant + défis personnalisés
+- name: Configure seed
+  hosts: seed
+  become: true
+  roles:
+    - role: user-access
+      user_access_username: student
+      user_access_password: Password123
+      user_access_sudo: false
+    - role: prng-lab
+      prng_lab_user: student
+      prng_flag_task1: "{{ flag_task1 | default('LocalTask1Flg') }}"
+      prng_flag_task2: "{{ flag_task2 | default('LocalTask2Flg') }}"
+      prng_flag_task3: "{{ flag_task3 | default('LocalTask3Flg') }}"
+      prng_flag_task4: "{{ flag_task4 | default('LocalTask4Flg') }}"
+      prng_flag_task5: "{{ flag_task5 | default('LocalTask5Flg') }}"
+
+# Journalisation des commandes (identique au modèle Junior Hacker) : l'enseignant
+# retrouve dans la plateforme les commandes tapées par chaque étudiant.
+- name: setup hosts logging roles
+  hosts:
+    - routers
+    - hosts
+  become: true
+  vars:
+    sandbox_name: seed-prng-local
+    central_syslog_ip: 78.128.251.179
+  roles:
+    - role: sandbox-logging
+      slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
+      slf_destination: '{% if hostvars["man"] is defined -%} {{ hostvars["man"].ansible_host }} {%- else -%} {{ central_syslog_ip }} {%- endif %}'
+      slf_sandbox_id: "{{ global_sandbox_id | default(student_id) | default(0) }}"
+      slf_sandbox_name: '{{ global_sandbox_name | default(sandbox_name) }}'
+      slf_pool_id: '{{ global_pool_id | default(None) }}'

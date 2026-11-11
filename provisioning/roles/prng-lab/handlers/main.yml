@@ -1,0 +1,7 @@
+---
+# Ferme une éventuelle session graphique ouverte automatiquement (image SEED avec bureau)
+- name: Restart display manager
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ ansible_facts.services.keys() | list | intersect(['gdm.service', 'gdm3.service', 'lightdm.service']) }}"

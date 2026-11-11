@@ -1,0 +1,13 @@
+Pedagogical content
+-------------------
+Based on "SEED Labs - Pseudo Random Number Generation Lab"
+Copyright (c) 2018 Wenliang Du. Free to use for non-commercial educational purposes.
+https://seedsecuritylabs.org/Labs_20.04/
+The SEED project was funded by multiple grants from the US National Science Foundation.
+
+Technical structure
+-------------------
+Repository layout, provisioning conventions and Ansible role usage are adapted from:
+library-junior-hacker (https://github.com/cyberrangecz/library-junior-hacker)
+Cybersecurity Laboratory, Faculty of Informatics, Masaryk University
+Code: MIT License. Game design: CC BY 4.0.

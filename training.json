@@ -1,0 +1,260 @@
+{
+  "title": "SEED Lab - Pseudo Random Number Generation",
+  "description": "Reproduction du SEED Lab « Pseudo Random Number Generation » : clés générées avec srand(time()), attaque par force brute sur la graine, entropie du noyau, /dev/random et /dev/urandom. Flags uniques par étudiant.",
+  "prerequisites": [
+    "Bases de la ligne de commande Linux",
+    "Bases du langage C (compiler avec gcc)",
+    "Notions de chiffrement symétrique (AES, mode CBC, IV)"
+  ],
+  "outcomes": [
+    "Expliquer pourquoi un générateur initialisé avec time() ne convient pas à la génération de clés.",
+    "Retrouver une clé AES par force brute sur la graine à partir d'un couple clair/chiffré connu.",
+    "Mesurer l'entropie du noyau Linux et identifier ses sources.",
+    "Comparer /dev/random et /dev/urandom et expliquer le risque de déni de service.",
+    "Évaluer la qualité d'un générateur avec ent et générer une clé de 256 bits correctement."
+  ],
+  "state": "UNRELEASED",
+  "show_stepper_bar": true,
+  "levels": [
+    {
+      "title": "Introduction",
+      "level_type": "INFO_LEVEL",
+      "order": 0,
+      "estimated_duration": 3,
+      "minimal_possible_solve_time": null,
+      "content": "# SEED Lab : Pseudo Random Number Generation\n\nGénérer des nombres aléatoires est une tâche courante en sécurité : les clés de chiffrement sont rarement choisies par l'utilisateur, elles sont générées par le logiciel. Si ce caractère aléatoire est faible, un attaquant peut **prédire la clé** et rendre le chiffrement inutile (des erreurs de ce type ont touché Netscape et Kerberos).\n\nDans ce laboratoire, vous reproduisez les 5 tâches de l'énoncé SEED *Pseudo Random Number Generation Lab* :\n\n| Tâche | Sujet | Points |\n|-|-|-|\n| 1 | Générer une clé de la mauvaise façon (`srand(time(NULL))`) | 30 |\n| 2 | Deviner la clé d'Alice par force brute | 60 |\n| 3 | Mesurer l'entropie du noyau | 30 |\n| 4 | Nombres pseudo-aléatoires depuis `/dev/random` | 40 |\n| 5 | Nombres aléatoires depuis `/dev/urandom` | 40 |\n\n# Barème : 200 points = 20/20\n\n* Votre note sur 20 = **score obtenu / 10**.\n* Chaque indice coûte entre **5 et 20 points**, soit **-0,5 à -2 points sur 20**. Le coût est affiché avant d'ouvrir l'indice.\n* Afficher la **solution** d'un niveau donne **0 point** pour ce niveau.\n* Une réponse fausse ne coûte pas de point, mais elle est enregistrée.\n\n# Règles\n\n* **Vos flags sont uniques.** Les dates, clés, fichiers chiffrés et flags de votre sandbox sont différents de ceux des autres étudiants. Le flag d'un camarade sera refusé, et toutes les réponses soumises (y compris fausses) ainsi que les commandes tapées dans la sandbox sont enregistrées et visibles par l'enseignant.\n* Un flag est une chaîne de **12 caractères alphanumériques**, sensible à la casse. Le fichier ou le validateur qui l'affiche donne aussi une « lecture » caractère par caractère (MAJ / min / chiffre) pour éviter les confusions `l` / `I` / `1` et `O` / `0`.\n* En plus des flags, vous devez rendre un **compte rendu** avec captures d'écran, observations et explications (voir le dernier niveau)."
+    },
+    {
+      "title": "Accès à la sandbox",
+      "level_type": "ACCESS_LEVEL",
+      "order": 1,
+      "estimated_duration": 3,
+      "minimal_possible_solve_time": null,
+      "passkey": "start",
+      "cloud_content": "Votre sandbox contient une seule machine, **`seed`** (Ubuntu, adresse `10.1.27.10`), sur laquelle vous réalisez les 5 tâches. Une fois connecté, soumettez la réponse **`start`**.\n\n### Accès à la sandbox\n1. Dans la topologie à droite, faites un clic droit sur **`seed`**, puis **`Open GUI`**. Une nouvelle fenêtre s'ouvre.\n2. Connectez-vous avec l'utilisateur **`student`** et le mot de passe **`Password123`**.\n3. Ouvrez un terminal et lisez les consignes : `cat ~/lab/README.txt`\n\n### Accès SSH (recommandé)\nL'accès SSH permet de **copier-coller** commandes et flags et d'ouvrir facilement **plusieurs terminaux** (nécessaire pour les tâches 3 et 4). Téléchargez la configuration SSH de la sandbox depuis la plateforme, puis connectez-vous en `student@10.1.27.10`. Voir la [documentation](https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/sandbox-access/#user-access).\n\n> Remarque : les mouvements de souris et le clavier ne génèrent de l'entropie que dans la console graphique (**Open GUI**). Pour les tâches 3 et 4, utilisez-la au moins une fois pour comparer avec SSH.",
+      "local_content": "Ce scénario n'a pas été testé en sandbox locale. Utilisez la sandbox cloud."
+    },
+    {
+      "title": "Tâche 1 : générer une clé de la mauvaise façon",
+      "level_type": "TRAINING_LEVEL",
+      "order": 2,
+      "estimated_duration": 15,
+      "minimal_possible_solve_time": null,
+      "answer": null,
+      "answer_variable_name": "flag_task1",
+      "content": "Le programme suivant (listing 1 de l'énoncé, fichier `~/lab/task1/keygen.c`) génère une clé AES de 128 bits en initialisant le générateur pseudo-aléatoire avec l'heure courante :\n\n```c\nprintf(\"%lld\\n\", (long long) time(NULL));\nsrand (time(NULL));          /* (1) */\nfor (i = 0; i < KEYSIZE; i++){\n   key[i] = rand()%256;\n   printf(\"%.2x\", (unsigned char)key[i]);\n}\n```\n\n`time()` renvoie le nombre de secondes écoulées depuis l'Epoch (1970-01-01 00:00:00 UTC).\n\n### Partie A : observation (compte rendu)\n1. Compilez (`gcc keygen.c -o keygen`) et lancez le programme plusieurs fois. Décrivez vos observations.\n2. Commentez la ligne (1), recompilez, relancez plusieurs fois. Décrivez vos observations.\n3. À partir de ces deux expériences, expliquez le rôle de `srand()` et de `time()`.\n\n### Partie B : le flag\nL'administrateur du serveur *backup-01* a utilisé ce même programme pour chiffrer un fichier. L'extrait d'historique `~/lab/task1/keygen.log` indique **la seconde exacte (UTC)** à laquelle `keygen` a été lancé, ainsi que la commande `openssl` utilisée (avec l'IV).\n\nReconstruisez sa clé, puis déchiffrez `~/lab/task1/secret.enc` (aes-128-cbc). **Le flag est dans le texte déchiffré.**",
+      "solution": "```\nstudent@seed:~$ cd ~/lab/task1\nstudent@seed:~/lab/task1$ cat keygen.log          # relever la date (UTC) et l'IV\nstudent@seed:~/lab/task1$ date -u -d \"AAAA-MM-JJ HH:MM:SS\" +%s\nEPOCH\nstudent@seed:~/lab/task1$ sed 's/srand (time(NULL));/srand (EPOCH);/' keygen.c > keygen_fixed.c\nstudent@seed:~/lab/task1$ gcc keygen_fixed.c -o keygen_fixed\nstudent@seed:~/lab/task1$ ./keygen_fixed          # 2e ligne = la clé de l'administrateur\nstudent@seed:~/lab/task1$ openssl enc -d -aes-128-cbc -K CLE -iv IV -in secret.enc\n...\nFlag de la tâche 1 : ${ANSWER}\n```\n\n**Explication.** `rand()` est un générateur déterministe : la même graine donne toujours la même suite. Sans `srand()`, la graine vaut 1 et la clé est identique à chaque exécution (`67c6697351ff4aec29cdbaabf2fbe346`). Avec `srand(time(NULL))`, la clé ne change qu'une fois par seconde et ne dépend que de l'heure : quiconque connaît l'heure de génération reconstruit la clé.\n\nLe flag est **`${ANSWER}`**.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Convertir la date du log en secondes depuis l'Epoch",
+          "content": "Utilisez `date -u -d \"AAAA-MM-JJ HH:MM:SS\" +%s`.\n\nL'option **`-u`** est importante : sans elle, la date est interprétée dans le fuseau horaire local de la VM et vous obtenez une graine décalée de plusieurs heures.",
+          "hint_penalty": 5,
+          "order": 0
+        },
+        {
+          "title": "Comment reproduire la clé de l'administrateur ?",
+          "content": "Copiez `keygen.c` et remplacez `srand (time(NULL));` par `srand (EPOCH);` où EPOCH est le nombre obtenu avec `date`. La clé affichée sur la 2e ligne est alors celle de l'administrateur, quelle que soit l'heure actuelle.",
+          "hint_penalty": 10,
+          "order": 1
+        },
+        {
+          "title": "Comment déchiffrer secret.enc ?",
+          "content": "`openssl enc -d -aes-128-cbc -K <clé en hexadécimal> -iv <IV du log> -in secret.enc`\n\nL'erreur `bad decrypt` signifie que la clé (donc la graine) est fausse.",
+          "hint_penalty": 10,
+          "order": 2
+        }
+      ],
+      "incorrect_answer_limit": 20,
+      "attachments": [],
+      "max_score": 30,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [],
+      "expected_commands": [],
+      "commands_required": false
+    },
+    {
+      "title": "Tâche 2 : deviner la clé",
+      "level_type": "TRAINING_LEVEL",
+      "order": 3,
+      "estimated_duration": 35,
+      "minimal_possible_solve_time": null,
+      "answer": null,
+      "answer_variable_name": "flag_task2",
+      "content": "Le 17 avril 2018, Alice a terminé sa déclaration de revenus (un PDF) et l'a chiffrée avec une clé générée par le programme de la tâche 1. Quelques mois plus tard, Bob s'introduit dans son ordinateur et copie le fichier chiffré. Alice étant PDG d'une grande entreprise, ce fichier a beaucoup de valeur.\n\nBob ne connaît pas la clé, mais il a vu le programme de génération et relevé la **date de création** du fichier chiffré. Il suppose que la clé a été générée **dans les deux heures précédant** cette date.\n\nUn PDF commence par un en-tête : `%PDF-1.5` (8 octets), et les 8 octets suivants sont tout aussi prévisibles. Bob connaît donc le premier bloc de 16 octets du texte clair, le bloc chiffré correspondant (le fichier est chiffré en **aes-128-cbc**) et l'IV, qui n'est jamais chiffré.\n\nDans votre sandbox (`~/lab/task2/`) :\n* `alice_tax_return.pdf.enc` : le PDF chiffré ;\n* `bob_notes.txt` : la date de création, le bloc clair connu, le bloc chiffré et l'IV, **propres à votre sandbox**.\n\n### Travail demandé\n1. Écrivez un programme qui essaie **toutes les clés possibles** de la fenêtre de 2 heures (une par seconde) et retrouve celle d'Alice.\n2. Déchiffrez **tout** le document avec cette clé.\n3. **Le flag est écrit dans le PDF déchiffré.**\n\nSi la clé avait été générée correctement, cette attaque serait impossible. Dans le compte rendu, expliquez pourquoi elle fonctionne ici et combien de clés vous avez dû essayer.",
+      "solution": "1. Fenêtre de recherche :\n```\nstudent@seed:~$ cd ~/lab/task2\nstudent@seed:~/lab/task2$ cat bob_notes.txt\nstudent@seed:~/lab/task2$ END=$(date -u -d \"DATE DE CRÉATION\" +%s); START=$((END-7200))\n```\n\n2. Programme de force brute `brute.c` :\n```c\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <openssl/evp.h>\n\n#define KEYSIZE 16\n\nstatic void hex2bin(const char *hex, unsigned char *out)\n{\n    for (int i = 0; i < 16; i++) {\n        unsigned int byte;\n        sscanf(hex + 2 * i, \"%2x\", &byte);\n        out[i] = (unsigned char)byte;\n    }\n}\n\nint main(int argc, char *argv[])\n{\n    if (argc != 6) {\n        fprintf(stderr, \"usage: %s START END PLAINTEXT CIPHERTEXT IV\\n\", argv[0]);\n        return 1;\n    }\n    long start = atol(argv[1]), end = atol(argv[2]);\n    unsigned char pt[16], ct[16], iv[16], key[KEYSIZE], out[32];\n    int len;\n    hex2bin(argv[3], pt);\n    hex2bin(argv[4], ct);\n    hex2bin(argv[5], iv);\n\n    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();\n    for (long t = start; t <= end; t++) {\n        srand(t);                                  /* même graine que keygen.c */\n        for (int i = 0; i < KEYSIZE; i++)\n            key[i] = rand() % 256;                 /* même clé que keygen.c */\n        EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);\n        EVP_CIPHER_CTX_set_padding(ctx, 0);        /* un seul bloc, pas de padding */\n        EVP_EncryptUpdate(ctx, out, &len, pt, 16);\n        if (memcmp(out, ct, 16) == 0) {\n            printf(\"Graine trouvée : %ld\\nClé : \", t);\n            for (int i = 0; i < KEYSIZE; i++)\n                printf(\"%.2x\", key[i]);\n            printf(\"\\n\");\n            EVP_CIPHER_CTX_free(ctx);\n            return 0;\n        }\n    }\n    EVP_CIPHER_CTX_free(ctx);\n    printf(\"Clé non trouvée dans la fenêtre\\n\");\n    return 1;\n}\n```\n\n3. Compilation, recherche et déchiffrement :\n```\nstudent@seed:~/lab/task2$ gcc brute.c -o brute -lcrypto\nstudent@seed:~/lab/task2$ ./brute $START $END 255044462d312e350a25d0d4c5d80a34 CIPHERTEXT IV\nGraine trouvée : ...\nClé : CLE\nstudent@seed:~/lab/task2$ openssl enc -d -aes-128-cbc -K CLE -iv IV -in alice_tax_return.pdf.enc -out alice.pdf\nstudent@seed:~/lab/task2$ strings alice.pdf | grep -i flag\n(Flag de la tache 2 : ${ANSWER}) Tj ET\n```\n\n**Explication.** La clé ne dépend que de la graine `time()`. Une fenêtre de 2 heures ne contient que 7 201 graines, donc 7 201 clés possibles (au lieu de 2^128) : la recherche prend moins d'une seconde.\n\nLe flag est **`${ANSWER}`**.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Quelle fenêtre de graines tester ?",
+          "content": "Convertissez la date de création de `bob_notes.txt` : `END=$(date -u -d \"AAAA-MM-JJ HH:MM:SS\" +%s)`, puis `START=$((END-7200))`. Il faut tester chaque seconde de `START` à `END` (7 201 graines).",
+          "hint_penalty": 5,
+          "order": 0
+        },
+        {
+          "title": "Quel algorithme ?",
+          "content": "Pour chaque graine `t` de la fenêtre :\n1. `srand(t)` puis 16 fois `key[i] = rand() % 256` (exactement comme `keygen.c`) ;\n2. chiffrer le bloc clair connu en AES-128-CBC avec cette clé et l'IV de Bob, **sans padding** ;\n3. si le résultat est égal au bloc chiffré connu, la clé est trouvée.",
+          "hint_penalty": 10,
+          "order": 1
+        },
+        {
+          "title": "Comment chiffrer un bloc avec OpenSSL en C ?",
+          "content": "```c\n#include <openssl/evp.h>\n\nEVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();\nEVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);\nEVP_CIPHER_CTX_set_padding(ctx, 0);\nEVP_EncryptUpdate(ctx, out, &len, plaintext, 16);\n/* comparer out et le bloc chiffré avec memcmp(out, ct, 16) */\nEVP_CIPHER_CTX_free(ctx);\n```\nCompilation : `gcc brute.c -o brute -lcrypto`",
+          "hint_penalty": 15,
+          "order": 2
+        },
+        {
+          "title": "Programme de force brute complet",
+          "content": "```c\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <openssl/evp.h>\n\n#define KEYSIZE 16\n\nstatic void hex2bin(const char *hex, unsigned char *out)\n{\n    for (int i = 0; i < 16; i++) {\n        unsigned int byte;\n        sscanf(hex + 2 * i, \"%2x\", &byte);\n        out[i] = (unsigned char)byte;\n    }\n}\n\nint main(int argc, char *argv[])\n{\n    if (argc != 6) {\n        fprintf(stderr, \"usage: %s START END PLAINTEXT CIPHERTEXT IV\\n\", argv[0]);\n        return 1;\n    }\n    long start = atol(argv[1]), end = atol(argv[2]);\n    unsigned char pt[16], ct[16], iv[16], key[KEYSIZE], out[32];\n    int len;\n    hex2bin(argv[3], pt);\n    hex2bin(argv[4], ct);\n    hex2bin(argv[5], iv);\n\n    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();\n    for (long t = start; t <= end; t++) {\n        srand(t);                                  /* même graine que keygen.c */\n        for (int i = 0; i < KEYSIZE; i++)\n            key[i] = rand() % 256;                 /* même clé que keygen.c */\n        EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);\n        EVP_CIPHER_CTX_set_padding(ctx, 0);        /* un seul bloc, pas de padding */\n        EVP_EncryptUpdate(ctx, out, &len, pt, 16);\n        if (memcmp(out, ct, 16) == 0) {\n            printf(\"Graine trouvée : %ld\\nClé : \", t);\n            for (int i = 0; i < KEYSIZE; i++)\n                printf(\"%.2x\", key[i]);\n            printf(\"\\n\");\n            EVP_CIPHER_CTX_free(ctx);\n            return 0;\n        }\n    }\n    EVP_CIPHER_CTX_free(ctx);\n    printf(\"Clé non trouvée dans la fenêtre\\n\");\n    return 1;\n}\n```\nUtilisation : `./brute START END PLAINTEXT CIPHERTEXT IV` (valeurs hexadécimales de `bob_notes.txt`), puis déchiffrez le fichier avec `openssl enc -d`.",
+          "hint_penalty": 20,
+          "order": 3
+        }
+      ],
+      "incorrect_answer_limit": 20,
+      "attachments": [],
+      "max_score": 60,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [],
+      "expected_commands": [],
+      "commands_required": false
+    },
+    {
+      "title": "Tâche 3 : mesurer l'entropie du noyau",
+      "level_type": "TRAINING_LEVEL",
+      "order": 4,
+      "estimated_duration": 10,
+      "minimal_possible_solve_time": null,
+      "answer": null,
+      "answer_variable_name": "flag_task3",
+      "content": "Un logiciel seul a du mal à créer de l'aléa : Linux le puise dans des événements physiques.\n\n```c\nvoid add_keyboard_randomness(unsigned char scancode);\nvoid add_mouse_randomness(__u32 mouse_data);\nvoid add_interrupt_randomness(int irq);\nvoid add_blkdev_randomness(int major);\n```\n\nRespectivement : le délai entre deux frappes au clavier, les mouvements de la souris, le moment des interruptions (pas celles du timer, trop prévisibles) et le temps de traitement des requêtes disque.\n\nL'**entropie** désigne ici le nombre de bits aléatoires dont le noyau dispose à un instant donné :\n\n```\ncat /proc/sys/kernel/random/entropy_avail\nwatch -n .1 cat /proc/sys/kernel/random/entropy_avail\n```\n\n### Travail demandé\n1. Lancez `watch` ci-dessus. Pendant qu'il tourne : bougez et cliquez la souris, tapez au clavier (console **Open GUI**), lisez beaucoup de fichiers (`cat /usr/bin/* > /dev/null 2>&1`), restez inactif. **Quelles activités font nettement augmenter l'entropie ?** Notez-le dans le compte rendu.\n2. Consultez aussi `/proc/sys/kernel/random/poolsize`.\n\n> Selon le noyau (`uname -r`), le comportement diffère : depuis Linux 5.18, `entropy_avail` reste fixé à 256. Décrivez et expliquez **ce que vous observez**.\n\n### Flag\nLaissez `watch` tourner dans un terminal et lancez dans **un autre terminal** :\n```\nseedlab check 3\n```\nLe validateur vous demande la valeur affichée par `watch` (il la compare avec l'entropie qu'il mesure lui-même) et la taille du pool. Il affiche ensuite votre flag.",
+      "solution": "```\n# Terminal 1\nstudent@seed:~$ watch -n .1 cat /proc/sys/kernel/random/entropy_avail\n\n# Terminal 2\nstudent@seed:~$ cat /proc/sys/kernel/random/poolsize\nstudent@seed:~$ seedlab check 3\n  [1/2] Valeur affichée par watch en ce moment (en bits) : <valeur lue dans le terminal 1>\n  [2/2] Taille maximale du pool d'entropie en bits : <valeur de poolsize>\n   Flag à soumettre dans CyberRangeCZ : ${ANSWER}\n```\n\n**Observations attendues (noyau < 5.18, ex. Ubuntu 20.04 en 5.4).** Clavier et souris dans la console graphique, ainsi que les lectures disque non mises en cache, font monter l'entropie. Au repos, elle progresse lentement (interruptions). En SSH, les frappes ne passent pas par le pilote clavier : elles n'apportent de l'entropie que via les interruptions réseau. Sur une VM, le disque virtuel peut aussi contribuer peu. Depuis Linux 5.18, le pool est un hachage BLAKE2s et `entropy_avail` reste à 256 dès que le CRNG est initialisé.\n\nLe flag est **`${ANSWER}`**.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Où lire l'entropie disponible ?",
+          "content": "Dans `/proc/sys/kernel/random/entropy_avail`. Pour la suivre en continu : `watch -n .1 cat /proc/sys/kernel/random/entropy_avail`.",
+          "hint_penalty": 5,
+          "order": 0
+        },
+        {
+          "title": "Où trouver la taille du pool ?",
+          "content": "Dans le même répertoire : `cat /proc/sys/kernel/random/poolsize`.",
+          "hint_penalty": 5,
+          "order": 1
+        },
+        {
+          "title": "Le validateur refuse ma valeur d'entropie",
+          "content": "Le validateur mesure lui-même l'entropie **pendant que vous répondez**. Gardez `watch` affiché dans un **autre terminal** (ou une 2e connexion SSH) et recopiez la valeur affichée **au moment où vous répondez**, pas une valeur lue plusieurs secondes plus tôt.",
+          "hint_penalty": 10,
+          "order": 2
+        }
+      ],
+      "incorrect_answer_limit": 20,
+      "attachments": [],
+      "max_score": 30,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [],
+      "expected_commands": [],
+      "commands_required": false
+    },
+    {
+      "title": "Tâche 4 : /dev/random",
+      "level_type": "TRAINING_LEVEL",
+      "order": 5,
+      "estimated_duration": 12,
+      "minimal_possible_solve_time": null,
+      "answer": null,
+      "answer_variable_name": "flag_task4",
+      "content": "Linux rassemble l'aléa physique dans un *pool* et le transforme en nombres pseudo-aléatoires via deux périphériques : `/dev/random` et `/dev/urandom`.\n\n`/dev/random` est **bloquant** : chaque lecture diminue l'entropie du pool et, quand elle atteint zéro, `/dev/random` attend d'avoir assez d'aléa.\n\n### Travail demandé\nDans un terminal, lisez `/dev/random` en continu :\n```\ncat /dev/random | hexdump\n```\nDans un autre, surveillez l'entropie :\n```\nwatch -n .1 cat /proc/sys/kernel/random/entropy_avail\n```\n1. Que se passe-t-il si vous ne bougez pas la souris et ne tapez rien ?\n2. Bougez la souris au hasard (console **Open GUI**) : observez-vous une différence ?\n3. Décrivez et expliquez vos observations. Relevez la version du noyau (`uname -r`) : depuis **Linux 5.6**, `/dev/random` ne bloque plus qu'au démarrage, tant que le générateur n'est pas initialisé. Votre observation est-elle cohérente ?\n\n**Question (compte rendu) :** un serveur utilise `/dev/random` pour générer une clé de session pour chaque client. Comment lancer une attaque par déni de service (DoS) contre lui ?\n\n### Flag\nLaissez `cat /dev/random | hexdump` **tourner**, et lancez dans un autre terminal :\n```\nseedlab check 4\n```\nLe validateur vérifie qu'un de vos processus lit `/dev/random`, vous demande la valeur affichée par `watch` pendant l'expérience, puis le périphérique qu'un serveur devrait utiliser à la place.",
+      "solution": "```\n# Terminal 1\nstudent@seed:~$ cat /dev/random | hexdump\n\n# Terminal 2\nstudent@seed:~$ watch -n .1 cat /proc/sys/kernel/random/entropy_avail\n\n# Terminal 3\nstudent@seed:~$ seedlab check 4\n  Lecteur de /dev/random détecté : processus ... (cat)\n  [1/2] Pendant que cat /dev/random tourne, quelle valeur affiche watch ? <valeur lue>\n  [2/2] ... Quel fichier spécial (chemin complet) doit-il utiliser à la place ? /dev/urandom\n   Flag à soumettre dans CyberRangeCZ : ${ANSWER}\n```\n\n**Observations attendues.** Sur un noyau < 5.6 (Ubuntu 20.04 en 5.4) : `hexdump` affiche quelques lignes puis **se bloque**, l'entropie reste proche de 0. Chaque mouvement de souris ou frappe débloque un peu de sortie, qui est aussitôt consommée. Sur un noyau ≥ 5.6, `/dev/random` ne bloque plus après l'initialisation : la sortie est continue, comme avec `/dev/urandom`.\n\n**DoS.** L'attaquant ouvre très rapidement un grand nombre de connexions (ou de *handshakes*). Chaque connexion consomme de l'entropie pour sa clé de session, le pool s'épuise, `read()` sur `/dev/random` bloque, et le serveur ne peut plus servir les clients légitimes. La parade consiste à utiliser `/dev/urandom` (ou `getrandom()`).\n\nLe flag est **`${ANSWER}`**.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Le validateur ne détecte pas ma commande cat",
+          "content": "`cat /dev/random | hexdump` doit être **en cours d'exécution**, sous l'utilisateur `student`, dans **un autre terminal** (ne l'arrêtez pas avec Ctrl+C). En SSH, ouvrez une deuxième connexion.",
+          "hint_penalty": 5,
+          "order": 0
+        },
+        {
+          "title": "Comment provoquer le déni de service ?",
+          "content": "Chaque nouvelle clé de session consomme de l'entropie. Que se passe-t-il si un attaquant ouvre des milliers de connexions par seconde et que le pool tombe à zéro ? Que fait alors `read()` sur `/dev/random` ?",
+          "hint_penalty": 10,
+          "order": 1
+        },
+        {
+          "title": "Quel périphérique un serveur doit-il utiliser ?",
+          "content": "Le périphérique **non bloquant** qui lit le même pool : `/dev/urandom`.",
+          "hint_penalty": 15,
+          "order": 2
+        }
+      ],
+      "incorrect_answer_limit": 20,
+      "attachments": [],
+      "max_score": 40,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [],
+      "expected_commands": [],
+      "commands_required": false
+    },
+    {
+      "title": "Tâche 5 : /dev/urandom",
+      "level_type": "TRAINING_LEVEL",
+      "order": 6,
+      "estimated_duration": 20,
+      "minimal_possible_solve_time": null,
+      "answer": null,
+      "answer_variable_name": "flag_task5",
+      "content": "`/dev/urandom` lit le même pool que `/dev/random` mais **ne bloque jamais** : il considère le contenu du pool comme une graine à partir de laquelle il génère autant de nombres que nécessaire.\n\n### Partie A : comportement et qualité\n```\ncat /dev/urandom | hexdump\n```\nBouger la souris a-t-il un effet sur la sortie ?\n\nMesurez ensuite la qualité de l'aléa avec l'outil `ent` sur 1 Mio de données :\n```\ncd ~/lab/task5\nhead -c 1M /dev/urandom > output.bin\nent output.bin\n```\nDécrivez le résultat (entropie, chi-deux, moyenne arithmétique, Monte-Carlo pour π, corrélation série) et dites si la qualité est bonne.\n\n### Partie B : clé de 256 bits\nL'énoncé recommande `/dev/urandom` pour les clés. Le fichier `~/lab/task5/genkey.c` contient l'extrait de code de l'énoncé, qui lit une clé de **128 bits** :\n\n```c\n#define LEN 16 // 128 bits\nunsigned char *key = (unsigned char *) malloc(sizeof(unsigned char)*LEN);\nFILE* random = fopen(\"/dev/urandom\", \"r\");\nfread(key, sizeof(unsigned char)*LEN, 1, random);\nfclose(random);\n```\n\nModifiez-le pour générer une clé de **256 bits** et l'afficher en hexadécimal (**64 caractères** sur une ligne, comme `keygen.c`). Compilez-le dans `~/lab/task5` sous le nom `genkey` et lancez-le. Faites une capture d'écran pour le compte rendu.\n\n### Flag\n```\nseedlab check 5\n```\nLe validateur vérifie `output.bin`, vous demande la valeur *Entropy* affichée par `ent`, puis exécute deux fois votre `genkey` pour contrôler qu'il produit des clés de 256 bits différentes.",
+      "solution": "```\nstudent@seed:~$ cd ~/lab/task5\nstudent@seed:~/lab/task5$ head -c 1M /dev/urandom > output.bin\nstudent@seed:~/lab/task5$ ent output.bin\nEntropy = 7.99982x bits per byte.\n...\n```\n\n`genkey.c` :\n```c\n#include <stdio.h>\n#include <stdlib.h>\n\n#define LEN 32 // 256 bits\n\nint main()\n{\n  unsigned char *key = (unsigned char *) malloc(sizeof(unsigned char)*LEN);\n  FILE* random = fopen(\"/dev/urandom\", \"r\");\n  fread(key, sizeof(unsigned char)*LEN, 1, random);\n  fclose(random);\n\n  for (int i = 0; i < LEN; i++)\n    printf(\"%.2x\", key[i]);\n  printf(\"\\n\");\n\n  free(key);\n  return 0;\n}\n```\n\n```\nstudent@seed:~/lab/task5$ gcc genkey.c -o genkey && ./genkey\nstudent@seed:~/lab/task5$ seedlab check 5\n  [1/2] Valeur « Entropy = ... bits per byte » donnée par ent pour output.bin : 7.99982x\n   Flag à soumettre dans CyberRangeCZ : ${ANSWER}\n```\n\n**Analyse attendue de ent.** Une entropie très proche de 8 bits par octet, une compression impossible (0 %), un chi-deux dont la probabilité n'est ni extrême (< 1 %) ni proche de 100 %, une moyenne proche de 127,5, une estimation de π proche de 3,14 et une corrélation série proche de 0 : la sortie de `/dev/urandom` est statistiquement indiscernable de l'aléatoire. La souris n'a aucun effet visible, puisque `/dev/urandom` ne bloque jamais.\n\nLe flag est **`${ANSWER}`**.",
+      "solution_penalized": true,
+      "hints": [
+        {
+          "title": "Quelle valeur de ent faut-il donner ?",
+          "content": "Lancez `ent output.bin` dans `~/lab/task5` et recopiez le nombre de la première ligne, `Entropy = 7.99xxxx bits per byte`, avec au moins 4 décimales.",
+          "hint_penalty": 5,
+          "order": 0
+        },
+        {
+          "title": "Comment passer de 128 à 256 bits ?",
+          "content": "256 bits = 32 octets : remplacez `#define LEN 16` par `#define LEN 32`. Le reste de la lecture dans `/dev/urandom` est inchangé.",
+          "hint_penalty": 10,
+          "order": 1
+        },
+        {
+          "title": "Comment afficher la clé en hexadécimal ?",
+          "content": "```c\nfor (int i = 0; i < LEN; i++)\n    printf(\"%.2x\", key[i]);\nprintf(\"\\n\");\n```",
+          "hint_penalty": 10,
+          "order": 2
+        },
+        {
+          "title": "Le validateur ne trouve pas mon programme",
+          "content": "Il cherche `~/lab/task5/genkey.c` (qui doit contenir `/dev/urandom`) et l'exécutable `~/lab/task5/genkey` : `cd ~/lab/task5 && gcc genkey.c -o genkey`.",
+          "hint_penalty": 5,
+          "order": 3
+        }
+      ],
+      "incorrect_answer_limit": 20,
+      "attachments": [],
+      "max_score": 40,
+      "variant_answers": true,
+      "reference_solution": [],
+      "mitre_techniques": [],
+      "expected_commands": [],
+      "commands_required": false
+    },
+    {
+      "title": "Compte rendu",
+      "level_type": "INFO_LEVEL",
+      "order": 7,
+      "estimated_duration": 2,
+      "minimal_possible_solve_time": null,
+      "content": "# Félicitations !\n\nVous avez terminé les 5 tâches du *Pseudo Random Number Generation Lab*. Votre note de plateforme est **votre score / 10** (sur 20).\n\n# Compte rendu à rendre\n\nComme l'exige l'énoncé SEED, rendez un compte rendu détaillé **avec captures d'écran**. Décrivez ce que vous avez fait, ce que vous avez observé, et **expliquez** les observations intéressantes ou surprenantes. Présentez les extraits de code importants **suivis d'une explication** : du code sans explication ne rapporte aucun point.\n\n| Tâche | Contenu attendu |\n|-|-|\n| 1 | Exécutions avec et sans `srand()`. Rôle de `srand()` et de `time()`. Reconstruction de la clé de *backup-01*. |\n| 2 | Calcul de la fenêtre. Programme de force brute commenté. Graine et clé trouvées, nombre d'essais. Pourquoi l'attaque fonctionne et comment l'éviter. |\n| 3 | Captures de `watch`. Activités qui augmentent (ou non) l'entropie, et pourquoi. Version du noyau. |\n| 4 | Comportement de `cat /dev/random \\| hexdump` avec et sans activité. Explication selon la version du noyau. Scénario de DoS. |\n| 5 | Sortie de `ent` analysée ligne par ligne. Code de `genkey.c` (256 bits) et capture de son exécution. Pourquoi préférer `/dev/urandom`. |\n\n**Synthèse :** pourquoi `rand()` convient à une simulation Monte-Carlo mais pas à la génération de clés, et quelle méthode utiliser à la place (`/dev/urandom`, `getrandom()`, bibliothèques cryptographiques)."
+    }
+  ],
+  "estimated_duration": 100,
+  "variant_sandboxes": true
+}

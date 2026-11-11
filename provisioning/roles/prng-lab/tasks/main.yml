@@ -1,0 +1,174 @@
+---
+# Rôle prng-lab : prépare les 5 tâches du SEED Lab PRNG pour un étudiant.
+
+# ------------------------------------------------------------------ fichiers de départ
+- name: Create lab directories
+  ansible.builtin.file:
+    path: "{{ prng_lab_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ prng_lab_user }}"
+    group: "{{ prng_lab_user }}"
+    mode: "0755"
+  loop: ["", task1, task2, task3, task4, task5]
+
+- name: Copy lab instructions and SEED source code
+  ansible.builtin.copy:
+    src: "lab/{{ item }}"
+    dest: "{{ prng_lab_dir }}/{{ item }}"
+    owner: "{{ prng_lab_user }}"
+    group: "{{ prng_lab_user }}"
+    mode: "0644"
+    force: false          # ne jamais écraser le travail de l'étudiant lors d'un re-provisioning
+  loop:
+    - README.txt
+    - task1/README.txt
+    - task1/keygen.c
+    - task2/README.txt
+    - task3/README.txt
+    - task4/README.txt
+    - task5/README.txt
+    - task5/genkey.c
+
+# ------------------------------------------------------------------ défis personnalisés
+- name: Create private build directory
+  ansible.builtin.file:
+    path: /root/.prng-build
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Copy challenge generator and checker source
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/root/.prng-build/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - build_challenges.py
+    - seedlab.c
+
+- name: Generate per-sandbox challenges and compile the checker
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /root/.prng-build/build_challenges.py
+      - --lab-dir
+      - "{{ prng_lab_dir }}"
+      - --owner
+      - "{{ prng_lab_user }}"
+      - --salt-file
+      - /root/.prng-lab-salt
+      - --checker-src
+      - /root/.prng-build/seedlab.c
+      - --checker-out
+      - "{{ prng_checker_path }}"
+  environment:
+    PRNG_FLAG1: "{{ prng_flag_task1 }}"
+    PRNG_FLAG2: "{{ prng_flag_task2 }}"
+    PRNG_FLAG3: "{{ prng_flag_task3 }}"
+    PRNG_FLAG4: "{{ prng_flag_task4 }}"
+    PRNG_FLAG5: "{{ prng_flag_task5 }}"
+  changed_when: true
+  no_log: true            # les flags ne doivent apparaître ni dans les logs Ansible ni dans le journal de la VM
+
+- name: Remove build directory
+  ansible.builtin.file:
+    path: /root/.prng-build
+    state: absent
+
+# ------------------------------------------------------------------ vérifications
+- name: Run checker self-test
+  ansible.builtin.command: "{{ prng_checker_path }} --selftest"
+  register: prng_selftest
+  changed_when: false
+  no_log: true
+
+- name: Check that the checker contains the flags of this sandbox
+  ansible.builtin.assert:
+    that:
+      - prng_selftest.stdout_lines == [prng_flag_task3 | hash('sha256'), prng_flag_task4 | hash('sha256'), prng_flag_task5 | hash('sha256')]
+    fail_msg: "Le validateur seedlab ne contient pas les flags attendus"
+    quiet: true
+  no_log: true
+
+- name: Check checker permissions
+  ansible.builtin.stat:
+    path: "{{ prng_checker_path }}"
+  register: prng_checker_stat
+
+- name: Assert checker is execute-only for students
+  ansible.builtin.assert:
+    that:
+      - prng_checker_stat.stat.exists
+      - prng_checker_stat.stat.mode == '0711'
+      - prng_checker_stat.stat.pw_name == 'root'
+
+- name: Check generated challenge files
+  ansible.builtin.stat:
+    path: "{{ prng_lab_dir }}/{{ item }}"
+  register: prng_files
+  loop:
+    - task1/secret.enc
+    - task1/keygen.log
+    - task2/alice_tax_return.pdf.enc
+    - task2/bob_notes.txt
+
+- name: Assert challenge files exist and belong to the student
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.pw_name == prng_lab_user
+    quiet: true
+  loop: "{{ prng_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# ------------------------------------------------------------------ anti-triche
+# Les VM SEED ont un compte « seed » (mot de passe public « dees », sudo). On le rend
+# inutilisable par les étudiants : mot de passe aléatoire inconnu, pas de connexion
+# graphique automatique. L'accès SSH par clé du compte de gestion reste intact.
+- name: Collect local accounts
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Replace the public password of the default SEED account
+  ansible.builtin.user:
+    name: "{{ prng_seed_default_user }}"
+    password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) | password_hash('sha512') }}"
+  when: prng_seed_default_user in ansible_facts.getent_passwd
+  no_log: true
+
+- name: Collect services
+  ansible.builtin.service_facts:
+
+- name: Check for GDM configuration
+  ansible.builtin.stat:
+    path: /etc/gdm3/custom.conf
+  register: prng_gdm_conf
+
+- name: Disable GDM automatic login
+  ansible.builtin.lineinfile:
+    path: /etc/gdm3/custom.conf
+    regexp: '^\s*#?\s*AutomaticLoginEnable\s*='
+    line: AutomaticLoginEnable = false
+    insertafter: '^\[daemon\]'
+  when: prng_gdm_conf.stat.exists
+  notify: Restart display manager
+
+- name: Find LightDM configuration files
+  ansible.builtin.find:
+    paths: [/etc/lightdm, /etc/lightdm/lightdm.conf.d]
+    patterns: "*.conf"
+  register: prng_lightdm_conf
+
+- name: Disable LightDM automatic login
+  ansible.builtin.lineinfile:
+    path: "{{ item.path }}"
+    regexp: '^\s*autologin-user\s*='
+    state: absent
+  loop: "{{ prng_lightdm_conf.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Restart display manager

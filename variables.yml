@@ -1,0 +1,29 @@
+# Variables APG : la plateforme génère une valeur DIFFÉRENTE pour chaque sandbox,
+# donc pour chaque étudiant. Ces valeurs sont :
+#   1. passées à Ansible (extra vars) pour construire les défis de la sandbox ;
+#   2. stockées dans « answers-storage » et utilisées comme réponse attendue
+#      des niveaux qui ont « variant_answers: true » dans training.json.
+#
+# type password = chaîne aléatoire [A-Za-z0-9]. Avec 12 caractères : 62^12 ≈ 3·10^21
+# possibilités, aucune collision réaliste entre les ~30 étudiants d'un pool.
+# Doc : https://docs.platform.cyberrange.cz/user-guide-advanced/sandboxes/apg-variables/
+
+flag_task1:
+  type: password
+  length: 12
+
+flag_task2:
+  type: password
+  length: 12
+
+flag_task3:
+  type: password
+  length: 12
+
+flag_task4:
+  type: password
+  length: 12
+
+flag_task5:
+  type: password
+  length: 12

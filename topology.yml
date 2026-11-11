@@ -1,0 +1,43 @@
+# Topologie minimale du SEED Lab « Pseudo Random Number Generation » (CyberRangeCZ)
+#
+#   [ seed ] 10.1.27.10 ---- lab-switch 10.1.27.0/24 ---- 10.1.27.1 [ router ] ---- WAN (Internet)
+#
+# - seed   : la seule machine du TP (les 5 tâches s'exécutent localement).
+# - router : obligatoire. C'est le seul chemin vers Internet (apt pendant le provisioning)
+#            et la passerelle du réseau accessible par l'utilisateur.
+
+name: library-seed-prng
+
+hosts:
+  - name: seed
+    base_box:
+      image: seed          # À ADAPTER : nom exact de l'image SEED dans votre instance CyberRangeCZ
+      mgmt_user: seed      # À ADAPTER : utilisateur de l'image avec sudo sans mot de passe (clé SSH via cloud-init)
+    flavor: m1.medium
+
+routers:
+  - name: router
+    base_box:
+      image: debian-12-x86_64
+      mgmt_user: debian
+    flavor: m1.medium
+
+wan:
+  name: internet-connection
+  cidr: 100.100.100.0/24
+
+networks:
+  - name: lab-switch
+    cidr: 10.1.27.0/24
+
+net_mappings:
+  - host: seed
+    network: lab-switch
+    ip: 10.1.27.10
+
+router_mappings:
+  - router: router
+    network: lab-switch
+    ip: 10.1.27.1
+
+groups: []
